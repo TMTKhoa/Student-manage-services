@@ -59,34 +59,63 @@ Other points:
 - **Windows Defender Firewall switched on**, with its service (`mpssvc`) running. The internet blocking works by adding firewall rules, so it does nothing if the firewall is off.
 - Student accounts without administrator rights.
 - The script must be installed in `C:\cmd` on every client.
+- Port 11100 open on every client (run `firewall-setup.bat` on each client first).
 - One-time admin approval on each PC (see [Installation](#installation)).
 
 ## Installation
 
-Do this **once on each client PC**.
+**Order matters: set up the firewall on each client first.** Veyon Master can only reach a student PC once port 11100 is open on it. After that, the rest is done from the server (the teacher PC where Veyon Master runs).
 
-1. Create the folder `C:\cmd` and copy `KhoaVeyonService.bat` into it. Put your Excel list files there too (see [Excel list files](#excel-list-files)).
-2. Run the setup as the PC's administrator. From Command Prompt:
-   ```
-   C:\cmd\KhoaVeyonService.bat -install
-   ```
-   Or double-click the file after opening it with `-install` as its argument. Windows asks for the admin name and password in the UAC window.
-3. You should see `Install done`.
+Files in this project:
+
+| File | Purpose |
+|---|---|
+| `firewall-setup.bat` | Turns the firewall on and opens Veyon's port 11100. Run on every client **first**. |
+| `KhoaVeyonService.bat` | The main script with all the actions. |
+| `AllowPage.xlsx`, `BlockAppList.xlsx`, `KeepAppList.xlsx` | Optional lists (see [Excel list files](#excel-list-files)). |
+
+### Step 1: Firewall on each client (first)
+
+Copy `firewall-setup.bat` to the student PC (USB drive or a shared folder) and run it. Windows asks for the PC's admin name and password (UAC). It runs only these two commands:
+
+```
+netsh advfirewall set allprofiles state on
+netsh advfirewall firewall add rule name="Veyon Server" dir=in action=allow protocol=TCP localport=11100 profile=any
+```
+
+This needs admin rights, so Veyon cannot do it for you. Do it once per PC. After it, check that the PC shows up in Veyon Master.
+
+On the **teacher PC**, also allow port `11400` for Veyon's Demo feature. These are Veyon's default ports; use your own numbers if you changed them. No port forwarding is needed.
+
+### Step 2: Distribute the files from the server
+
+On the teacher PC, open Veyon Master, select the student PCs and use Veyon's file distribution (the **File transfer** feature) to send these files:
+
+- `KhoaVeyonService.bat`
+- the Excel list files you need
+
+Veyon saves the files in the destination folder set for file transfer, which may not be `C:\cmd`. If your Veyon version has a destination folder setting, set it to `C:\cmd`. Otherwise send the files, look at one client to see where they landed, and move them into `C:\cmd`. The script must end up in `C:\cmd`.
+
+### Step 3: Install on each client (once)
+
+Run this on each client with admin rights:
+
+```
+C:\cmd\KhoaVeyonService.bat -install
+```
+
+Windows asks for the admin name and password (UAC). You should see `Install done`. Veyon cannot do this step either, because its programs run as the student, who has no admin rights.
 
 `-install` does two things:
 
 - It creates one small Windows service per admin-level action (`KhoaVeyonService_blockall`, `_allowpage`, `_allowall`, `_blockapp`, `_unblockapp`). Standard users may **start** these services but not edit them.
 - It makes `C:\cmd` read-only for normal users, so students cannot change the script or the lists.
 
-### Firewall ports
+### Step 4: Start applications from the server
 
-If the Windows firewall was off before, make sure Veyon can still reach the clients:
+From now on everything is done from Veyon Master on the server. Add an entry per action in Veyon (see [Adding the actions to Veyon](#adding-the-actions-to-veyon)), select the student PCs, and use **Run program** (called **Start application** in some versions) to start `C:\cmd\KhoaVeyonService.bat` with a switch such as `-blockall`.
 
-```
-netsh advfirewall firewall add rule name="Veyon Server" dir=in action=allow protocol=TCP localport=11100 profile=any
-```
-
-On the teacher PC, also allow port `11400` for Veyon's Demo feature. These are Veyon's default ports; use your own numbers if you changed them. No port forwarding is needed.
+To update the script or the lists later, repeat Step 2 from the server. Because `C:\cmd` is read-only for students, you may need admin rights on the client to overwrite files that are already there.
 
 ## Switches
 
@@ -176,7 +205,7 @@ Because `-install` makes `C:\cmd` read-only for normal users, you update the lis
 | Unmute | `C:\cmd\KhoaVeyonService.bat -unmute` |
 
 3. Click **Apply**.
-4. In **Veyon Master**, select the student PCs, click **Run program**, and choose an entry.
+4. In **Veyon Master**, select the student PCs, click **Run program** (called **Start application** in some versions), and choose an entry.
 
 ## How it works
 
@@ -222,7 +251,7 @@ Check, in this order:
 4. `ping 8.8.8.8` fails after the block, while `ping <teacher PC IP>` still works.
 
 **A PC disappears from Veyon Master after the firewall was turned on.**
-Add the incoming rule for port 11100 (see [Firewall ports](#firewall-ports)).
+Add the incoming rule for port 11100 (see [Step 1](#step-1-firewall-on-each-client-first)).
 
 **`-mute` does nothing.**
 Make sure the PC has an active output device. Check the log for the error text.
