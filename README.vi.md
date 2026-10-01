@@ -59,34 +59,63 @@ C:\cmd\KhoaVeyonService.bat -blockall
 - **Windows Defender Firewall phải bật**, và dịch vụ của nó (`mpssvc`) phải đang chạy. Việc chặn internet hoạt động bằng cách thêm luật tường lửa, nên nếu tường lửa tắt thì không có tác dụng.
 - Tài khoản học sinh không có quyền quản trị.
 - Script phải được cài trong thư mục `C:\cmd` trên mọi máy học sinh.
+- Cổng 11100 phải mở trên mọi máy học sinh (chạy `firewall-setup.bat` trên từng máy trước).
 - Cần quản trị viên cho phép một lần trên mỗi máy (xem [Cài đặt](#cài-đặt)).
 
 ## Cài đặt
 
-Làm **một lần trên mỗi máy học sinh**.
+**Thứ tự rất quan trọng: thiết lập tường lửa trên từng máy học sinh trước.** Veyon Master chỉ kết nối được với máy học sinh khi cổng 11100 đã mở trên máy đó. Sau đó, phần còn lại làm từ máy chủ (máy giáo viên, nơi chạy Veyon Master).
 
-1. Tạo thư mục `C:\cmd` và chép `KhoaVeyonService.bat` vào đó. Chép luôn các file danh sách Excel vào đây (xem [File danh sách Excel](#file-danh-sách-excel)).
-2. Chạy cài đặt bằng tài khoản quản trị của máy đó. Trong Command Prompt:
-   ```
-   C:\cmd\KhoaVeyonService.bat -install
-   ```
-   Windows sẽ hỏi tên và mật khẩu admin trong cửa sổ UAC.
-3. Khi thấy dòng `Install done` là xong.
+Các file trong dự án:
+
+| File | Công dụng |
+|---|---|
+| `firewall-setup.bat` | Bật tường lửa và mở cổng 11100 của Veyon. Chạy trên mọi máy học sinh **trước tiên**. |
+| `KhoaVeyonService.bat` | Script chính chứa tất cả chức năng. |
+| `AllowPage.xlsx`, `BlockAppList.xlsx`, `KeepAppList.xlsx` | Các danh sách tùy chọn (xem [File danh sách Excel](#file-danh-sách-excel)). |
+
+### Bước 1: Tường lửa trên từng máy học sinh (làm trước)
+
+Chép `firewall-setup.bat` sang máy học sinh (USB hoặc thư mục chia sẻ) rồi chạy. Windows sẽ hỏi tên và mật khẩu admin của máy (UAC). File chỉ chạy đúng hai lệnh này:
+
+```
+netsh advfirewall set allprofiles state on
+netsh advfirewall firewall add rule name="Veyon Server" dir=in action=allow protocol=TCP localport=11100 profile=any
+```
+
+Việc này cần quyền admin nên Veyon không làm thay được. Làm một lần cho mỗi máy. Sau đó kiểm tra máy có hiện trong Veyon Master không.
+
+Trên **máy giáo viên**, mở thêm cổng `11400` cho tính năng Demo của Veyon. Đây là cổng mặc định của Veyon; nếu bạn đã đổi thì dùng cổng của bạn. Không cần chuyển tiếp cổng (port forwarding).
+
+### Bước 2: Phân phối file từ máy chủ
+
+Trên máy giáo viên, mở Veyon Master, chọn các máy học sinh và dùng tính năng phân phối file của Veyon (tính năng **File transfer**) để gửi:
+
+- `KhoaVeyonService.bat`
+- các file danh sách Excel bạn cần
+
+Veyon lưu file vào thư mục đích đã đặt cho tính năng chuyển file, thư mục này có thể không phải `C:\cmd`. Nếu phiên bản Veyon của bạn có tùy chọn thư mục đích, hãy đặt là `C:\cmd`. Nếu không, gửi file xong thì xem trên một máy học sinh xem file nằm ở đâu và chuyển vào `C:\cmd`. Script phải nằm trong `C:\cmd`.
+
+### Bước 3: Cài đặt trên từng máy học sinh (một lần)
+
+Chạy lệnh này trên mỗi máy với quyền admin:
+
+```
+C:\cmd\KhoaVeyonService.bat -install
+```
+
+Windows sẽ hỏi tên và mật khẩu admin (UAC). Khi thấy `Install done` là xong. Veyon cũng không làm được bước này, vì chương trình do Veyon chạy dùng quyền của học sinh, không có quyền admin.
 
 `-install` làm hai việc:
 
 - Tạo một dịch vụ Windows nhỏ cho mỗi chức năng cần quyền admin (`KhoaVeyonService_blockall`, `_allowpage`, `_allowall`, `_blockapp`, `_unblockapp`). Người dùng thường được phép **khởi động** các dịch vụ này nhưng không được sửa chúng.
 - Đặt `C:\cmd` ở chế độ chỉ đọc với người dùng thường, để học sinh không sửa được script hay các danh sách.
 
-### Cổng tường lửa
+### Bước 4: Khởi chạy ứng dụng từ máy chủ
 
-Nếu trước đây tường lửa bị tắt, hãy chắc chắn Veyon vẫn kết nối được với các máy học sinh:
+Từ giờ mọi việc làm từ Veyon Master trên máy chủ. Thêm mỗi chức năng một mục trong Veyon (xem [Thêm chức năng vào Veyon](#thêm-chức-năng-vào-veyon)), chọn các máy học sinh và dùng **Run program** (ở một số phiên bản gọi là **Start application**) để chạy `C:\cmd\KhoaVeyonService.bat` kèm một tham số như `-blockall`.
 
-```
-netsh advfirewall firewall add rule name="Veyon Server" dir=in action=allow protocol=TCP localport=11100 profile=any
-```
-
-Trên máy giáo viên, mở thêm cổng `11400` cho tính năng Demo của Veyon. Đây là cổng mặc định của Veyon; nếu bạn đã đổi thì dùng cổng của bạn. Không cần chuyển tiếp cổng (port forwarding).
+Khi cần cập nhật script hoặc danh sách, lặp lại Bước 2 từ máy chủ. Vì `C:\cmd` chỉ đọc với học sinh, bạn có thể cần quyền admin trên máy học sinh để ghi đè các file đã có.
 
 ## Các tham số
 
@@ -176,7 +205,7 @@ Vì `-install` đặt `C:\cmd` chỉ đọc với người dùng thường, bạ
 | Bật tiếng | `C:\cmd\KhoaVeyonService.bat -unmute` |
 
 3. Bấm **Apply**.
-4. Trong **Veyon Master**, chọn các máy học sinh, bấm **Run program** và chọn mục cần dùng.
+4. Trong **Veyon Master**, chọn các máy học sinh, bấm **Run program** (ở một số phiên bản gọi là **Start application**) và chọn mục cần dùng.
 
 ## Cách hoạt động
 
@@ -222,7 +251,7 @@ Kiểm tra theo thứ tự:
 4. `ping 8.8.8.8` thất bại sau khi chặn, còn `ping <IP máy giáo viên>` vẫn thông.
 
 **Máy biến mất khỏi Veyon Master sau khi bật tường lửa.**
-Thêm luật cho phép cổng 11100 chiều đi vào (xem [Cổng tường lửa](#cổng-tường-lửa)).
+Thêm luật cho phép cổng 11100 chiều đi vào (xem [Bước 1](#bước-1-tường-lửa-trên-từng-máy-học-sinh-làm-trước)).
 
 **`-mute` không có tác dụng.**
 Đảm bảo máy có thiết bị phát âm thanh đang hoạt động. Xem nhật ký để biết nội dung lỗi.
