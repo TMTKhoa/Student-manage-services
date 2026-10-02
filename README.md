@@ -109,7 +109,8 @@ Windows asks for the admin name and password (UAC). You should see `Install done
 `-install` does two things:
 
 - It creates one small Windows service per admin-level action (`KhoaVeyonService_blockall`, `_allowpage`, `_allowall`, `_blockapp`, `_unblockapp`). Standard users may **start** these services but not edit them.
-- It makes `C:\cmd` read-only for normal users, so students cannot change the script or the lists.
+- It makes `C:\cmd` read-only for normal users, so students cannot change the script or the lists, **except** `C:\cmd\log`, which stays writable so the activity log can be recorded as the student.
+- It registers a logon task (`KhoaVeyonAutoLog`) that starts activity logging automatically for whichever student logs in (see [Activity log and export](#activity-log-and-export)).
 
 ### Step 4: Start applications from the server
 
@@ -134,10 +135,58 @@ To update the script or the lists later, repeat Step 2 from the server. Because 
 | `-unlock` | No | Undoes `-lockdown`. `-unlockdown` also works. |
 | `-mute` | No | Mutes the default speakers. |
 | `-unmute` | No | Unmutes them. |
+| `-activitylog-start` | No | Starts recording the active window title, process name, date, time, user and PC name to a CSV file. **Does not record keystrokes, typed text, or passwords.** |
+| `-activitylog-stop` | No | Stops recording. |
+| `-exportlog` | No | Merges this PC's activity log and action log into one CSV file, ready to collect and open in Excel. |
+
+> **About `-activitylog-start`:** this is intentionally limited to *which window/app was active and when*, not what was typed. Recording keystrokes on children's computers is a serious privacy risk and this project does not include that capability. Tell students and parents that activity is recorded, in line with your school's policy.
 
 Run with no switch (or an unknown one) to print the usage line.
 
 The internet block stays in place after a reboot until you run `-allowall`.
+
+## Full logging coverage
+
+Every switch now writes a log line, from student-triggered actions (`-killapp`, `-keepapp`, `-lockdown`, `-mute`...) through to admin-level actions (`-blockall`, `-blockapp`...) and `-install` / `-uninstall` themselves. Nothing runs silently.
+
+Each line records:
+
+```
+<date> <time>  PC=<computer name>  Student=<logged-in student>  RunAs=<account the code executed as>  [<switch>]  <message>
+```
+
+- **`Student`** is always the person actually sitting at the keyboard, resolved from the active console session — even when the action itself runs as SYSTEM (the admin-level switches) or as a different admin account (`-install` / `-uninstall`).
+- **`RunAs`** is the account the code executed under (the student account for user-session switches, `SYSTEM` for admin-level switches run through the service, or the admin account used for `-install`/`-uninstall`).
+
+This means a single log line always tells you *which PC*, *which student was there*, *what ran it*, and *what happened* — the full chain from student input to the admin-level action it triggered.
+
+## Activity log and export
+
+Everything lives in `C:\cmd\log` on each client, one CSV file **per PC per day**:
+
+```
+C:\cmd\log\activity_<PCNAME>_<yyyy-MM-dd>.csv
+```
+
+Columns: `Date, Time, PCName, User, Window, Process, Event`. `Event` is one of:
+
+- `change` — the active window/app changed.
+- `autosave` — an automatic row written every 3 minutes, so the file is never more than 3 minutes out of date, even with no change.
+- `action` — a block/allow/app-block/etc. event merged in from the action log, in the `Window` → left blank and the detail placed under `Event` (e.g. `action: Internet BLOCKED`).
+
+Rows are only ever **appended**, never overwritten, so the file accumulates through the whole day. At midnight the worker switches to the next day's file by itself, with no restart needed.
+
+### Starts automatically when the PC turns on
+
+`-install` registers a scheduled task (`KhoaVeyonAutoLog`) that fires at every logon, for any student account, and runs `-activitylog-start`. You do not need to add anything to Veyon for this to work; it runs on its own from the moment a student logs in. `-activitylog-start` does nothing if it is already running on that PC, so a double logon or a manual run afterwards is harmless.
+
+### `-exportlog` (optional, manual)
+
+The 3-minute `autosave` rows already keep today's file current on their own. `-exportlog` is only useful if you want the latest block/allow/app-block events merged in **right now**, without waiting up to 3 minutes. It is safe to run repeatedly; it only adds the lines it has not merged yet.
+
+### Collecting the files
+
+Use Veyon's file transfer (download direction, if your version supports it) or copy `C:\cmd\log\activity_*.csv` from each client. Every file opens directly in Excel; no `.xlsx` conversion is needed.
 
 ## Excel list files
 

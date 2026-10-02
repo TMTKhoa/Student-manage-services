@@ -109,7 +109,8 @@ Windows sẽ hỏi tên và mật khẩu admin (UAC). Khi thấy `Install done` 
 `-install` làm hai việc:
 
 - Tạo một dịch vụ Windows nhỏ cho mỗi chức năng cần quyền admin (`KhoaVeyonService_blockall`, `_allowpage`, `_allowall`, `_blockapp`, `_unblockapp`). Người dùng thường được phép **khởi động** các dịch vụ này nhưng không được sửa chúng.
-- Đặt `C:\cmd` ở chế độ chỉ đọc với người dùng thường, để học sinh không sửa được script hay các danh sách.
+- Đặt `C:\cmd` ở chế độ chỉ đọc với người dùng thường, để học sinh không sửa được script hay các danh sách, **trừ** `C:\cmd\log`, vẫn ghi được để log hoạt động có thể ghi dưới quyền học sinh.
+- Đăng ký một tác vụ theo lịch (`KhoaVeyonAutoLog`), tự bắt đầu ghi log hoạt động cho bất kỳ học sinh nào đăng nhập (xem [Log hoạt động và xuất dữ liệu](#log-hoạt-động-và-xuất-dữ-liệu)).
 
 ### Bước 4: Khởi chạy ứng dụng từ máy chủ
 
@@ -134,10 +135,58 @@ Khi cần cập nhật script hoặc danh sách, lặp lại Bước 2 từ máy
 | `-unlock` | Không | Hoàn tác `-lockdown`. `-unlockdown` cũng dùng được. |
 | `-mute` | Không | Tắt tiếng loa mặc định. |
 | `-unmute` | Không | Bật tiếng lại. |
+| `-activitylog-start` | Không | Bắt đầu ghi lại tên cửa sổ/ứng dụng đang hoạt động, kèm ngày, giờ, tên người dùng và mã máy, vào file CSV. **Không ghi phím bấm, chữ gõ hay mật khẩu.** |
+| `-activitylog-stop` | Không | Dừng ghi. |
+| `-exportlog` | Không | Gộp log hoạt động và log hành động của máy này thành một file CSV, sẵn sàng thu thập và mở bằng Excel. |
+
+> **Về `-activitylog-start`:** chức năng này cố tình chỉ giới hạn ở *cửa sổ/ứng dụng nào đang hoạt động và vào lúc nào*, không ghi nội dung gõ. Ghi phím bấm trên máy tính của trẻ em là rủi ro quyền riêng tư nghiêm trọng, nên dự án này không có chức năng đó. Hãy thông báo cho học sinh và phụ huynh rằng hoạt động được ghi lại, phù hợp với quy định của nhà trường.
 
 Chạy không có tham số (hoặc tham số sai) sẽ in ra dòng hướng dẫn cách dùng.
 
 Việc chặn internet vẫn còn sau khi khởi động lại máy, cho đến khi bạn chạy `-allowall`.
+
+## Ghi log đầy đủ, từ học sinh đến admin
+
+Mọi tham số giờ đều ghi log, từ hành động do học sinh kích hoạt (`-killapp`, `-keepapp`, `-lockdown`, `-mute`...) đến hành động ở mức admin (`-blockall`, `-blockapp`...) và cả `-install` / `-uninstall`. Không có hành động nào chạy âm thầm nữa.
+
+Mỗi dòng log ghi:
+
+```
+<ngày> <giờ>  PC=<tên máy>  Student=<học sinh đang đăng nhập>  RunAs=<tài khoản thực thi>  [<tham số>]  <nội dung>
+```
+
+- **`Student`** luôn là người đang thực sự ngồi trước máy, lấy từ phiên đăng nhập trên màn hình — kể cả khi chính hành động đó chạy dưới quyền SYSTEM (các tham số mức admin) hoặc dưới một tài khoản admin khác (`-install` / `-uninstall`).
+- **`RunAs`** là tài khoản mà đoạn mã thực sự chạy dưới quyền đó (tài khoản học sinh với các tham số chạy trong phiên người dùng, `SYSTEM` với các tham số mức admin chạy qua dịch vụ, hoặc tài khoản admin dùng khi `-install`/`-uninstall`).
+
+Nhờ vậy, chỉ một dòng log đã cho biết đủ: *máy nào*, *học sinh nào đang ở đó*, *ai/cái gì đã thực thi*, và *chuyện gì đã xảy ra* — đầy đủ chuỗi từ thao tác của học sinh đến hành động ở mức admin mà nó kích hoạt.
+
+## Log hoạt động và xuất dữ liệu
+
+Tất cả nằm trong `C:\cmd\log` trên mỗi máy, **mỗi máy mỗi ngày một file CSV**:
+
+```
+C:\cmd\log\activity_<PCNAME>_<yyyy-MM-dd>.csv
+```
+
+Các cột: `Date, Time, PCName, User, Window, Process, Event`. `Event` có 3 loại:
+
+- `change` — cửa sổ/ứng dụng đang hoạt động thay đổi.
+- `autosave` — dòng tự động ghi mỗi 3 phút, để file không bao giờ cũ quá 3 phút, kể cả khi không có gì thay đổi.
+- `action` — sự kiện chặn/cho phép mạng, chặn ứng dụng... được gộp từ log hành động, cột `Window` để trống, nội dung nằm trong `Event` (ví dụ `action: Internet BLOCKED`).
+
+Các dòng chỉ được **thêm vào**, không bao giờ ghi đè, nên file lưu lũy tiến suốt cả ngày. Đến nửa đêm, tiến trình ghi tự chuyển sang file của ngày mới, không cần khởi động lại.
+
+### Tự động chạy khi mở máy
+
+`-install` đăng ký một tác vụ theo lịch (`KhoaVeyonAutoLog`), chạy mỗi khi có người đăng nhập, với bất kỳ tài khoản học sinh nào, và tự chạy `-activitylog-start`. Bạn không cần thêm gì vào Veyon cho việc này; nó tự chạy ngay khi học sinh đăng nhập. `-activitylog-start` sẽ không làm gì nếu đã đang chạy sẵn trên máy đó, nên đăng nhập lại hoặc chạy tay thêm lần nữa cũng không sao.
+
+### `-exportlog` (tùy chọn, chạy tay)
+
+Các dòng `autosave` mỗi 3 phút đã tự giữ file của hôm nay luôn mới. `-exportlog` chỉ hữu ích khi bạn muốn gộp ngay các sự kiện chặn/cho phép mới nhất vào file **ngay lúc đó**, không cần chờ tới 3 phút. Chạy lại nhiều lần vẫn an toàn, vì nó chỉ thêm những dòng chưa được gộp.
+
+### Thu thập file
+
+Dùng tính năng chuyển file của Veyon (chiều tải xuống, nếu phiên bản của bạn hỗ trợ) hoặc chép tay các file `C:\cmd\log\activity_*.csv` từ mỗi máy. Mọi file đều mở trực tiếp bằng Excel, không cần chuyển sang `.xlsx`.
 
 ## File danh sách Excel
 
